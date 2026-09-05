@@ -41,9 +41,14 @@ import torch.nn.functional as F
 # ---------------------------------------------------------------------------
 try:  # mamba-ssm 1.x / 2.x public interface
     from mamba_ssm.ops.selective_scan_interface import selective_scan_fn as _selective_scan_fn
+    from mamba_ssm.ops.selective_scan_interface import selective_scan_cuda as _selective_scan_cuda
 
-    CUDA_SCAN_AVAILABLE = True
-except Exception:  # pragma: no cover - exercised only on non-CUDA hosts
+    # True ONLY if the fused Mamba-1 kernel is actually compiled in. mamba-ssm can
+    # install without it (e.g. when MAMBA_KEEP_CUDA_BUILD is not set), in which
+    # case selective_scan_fn raises at runtime — so we must fall back to the
+    # reference scan here instead of crashing later.
+    CUDA_SCAN_AVAILABLE = _selective_scan_cuda is not None
+except Exception:
     _selective_scan_fn = None
     CUDA_SCAN_AVAILABLE = False
 

@@ -136,28 +136,36 @@ cells.append(code('''# =========================================================
 # 5. CÀI ĐẶT THƯ VIỆN  (robust)
 # ============================================================================
 !pip install -q ninja yamlargparse librosa soundfile einops torchinfo rotary-embedding-torch tensorboard pesq pystoi
+!pip install -q packaging setuptools wheel triton      # build tools cho CUDA extensions
 
 import os, subprocess, sys, torch
-os.environ["MAMBA_KEEP_CUDA_BUILD"] = "TRUE"
-os.environ["TORCH_CUDA_ARCH_LIST"] = "7.5;8.0;8.6;9.0"   # T4/A100/3090/L4 (đủ kiến trúc)
-os.environ["MAX_JOBS"] = "4"                              # tránh OOM khi biên dịch
+# CUDA_HOME cho nvcc
+for cuda_path in ["/usr/local/cuda", "/usr/lib/cuda", "/opt/cuda"]:
+    if os.path.isdir(cuda_path):
+        os.environ["CUDA_HOME"] = cuda_path
+        break
+os.environ["MAMBA_KEEP_CUDA_BUILD"] = "TRUE"           # BẮT BUỘC: giữ kernel Mamba-1
+os.environ["TORCH_CUDA_ARCH_LIST"] = "7.5;8.0;8.6;9.0" # T4/A100/3090/L4
+os.environ["MAX_JOBS"] = "4"                            # tránh OOM khi biên dịch
 
 print("python", sys.version.split()[0], "| torch", torch.__version__,
       "| CUDA", torch.version.cuda,
-      "|", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU only")
+      "|", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU only",
+      "| CUDA_HOME", os.environ.get("CUDA_HOME"))
 if sys.version_info[:2] >= (3, 12):
     print("\u26a0\ufe0f Python >= 3.12: mamba-ssm/causal-conv1d RẤT KHÓ build. "
-          "Nên dùng runtime Python 3.10/3.11 (Runtime > Change runtime type).")
+          "Nên dùng runtime Python 3.10/3.11 (Runtime > Change runtime type) — "
+          "đây là điều kiện để train thật.")
 
 def sh(cmd):
     print(">", cmd)
     r = subprocess.run(cmd, shell=True, text=True, capture_output=True)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
-def try_import():
+def kernel_ok():
     try:
-        from mamba_ssm import Mamba
-        return True
+        from mamba_ssm.ops.selective_scan_interface import selective_scan_cuda
+        return selective_scan_cuda is not None
     except Exception:
         return False
 
@@ -167,29 +175,29 @@ def install(pkgs, tail_n=1400):
         print("  FAIL ->", out[-tail_n:])
     return rc
 
-ok = False
+ok = kernel_ok()
 # --- Bước 1: bản MỚI NHẤT (thường có wheel sẵn, không cần build) ---
 for pkg in ["causal-conv1d", "mamba-ssm"]:
-    if install(pkg):
-        if try_import():
-            ok = True
-            break
-print("Bước 1 (bản mới nhất):", "OK" if ok else "chưa dùng được")
+    if not ok:
+        install(pkg)
+        ok = kernel_ok()
+print("Bước 1 (bản mới nhất):", "OK" if ok else "chưa có kernel")
 
 # --- Bước 2: nếu chưa được, hạ torch rồi build cặp đã kiểm chứng ---
 if not ok:
     print("\U0001F4A1 Hạ torch 2.4.1 (cặp tương thích causal-conv1d 1.4.0) rồi build lại...")
     sh("pip install -q torch==2.4.1 torchaudio==2.4.1")
-    if install("causal-conv1d==1.4.0") == 0:
-        ok = install("mamba-ssm==2.0.1") == 0
-        if ok:
-            print("Kernel Mamba OK (sau khi hạ torch).")
+    install("causal-conv1d==1.4.0")
+    install("mamba-ssm==2.0.1")
+    ok = kernel_ok()
+    if ok:
+        print("Kernel Mamba OK (sau khi hạ torch).")
 
-print("\U0001F680 Kernel Mamba sẵn sàng?", ok)
+print("\U0001F680 Kernel Mamba-1 sẵn sàng?", ok)
 if not ok:
-    print("\u26a0\ufe0f KHÔNG có kernel Mamba -> model sẽ dùng REFERENCE SCAN (thuần PyTorch). "
-          "Bản này CHẬM và trên GPU có thể OOM; CHỈ hợp test. Muốn train thật: "
-          "cài mamba-ssm (thường phải dùng runtime Python 3.10/3.11), rồi chạy lại cell này.")'''))
+    print("\u26a0\ufe0f KHÔNG có kernel Mamba -> model sẽ dùng REFERENCE SCAN (thuần PyTorch, "
+          "đã tối ưu bộ nhớ nhưng CHẬM). Muốn train thật: cài mamba-ssm trên runtime "
+          "Python 3.10/3.11 (Runtime > Change runtime type), rồi chạy lại cell này.")'''))
 
 # ---- 6. config ----
 cells.append(code('''# ============================================================================
