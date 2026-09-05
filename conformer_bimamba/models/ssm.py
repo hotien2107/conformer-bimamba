@@ -73,16 +73,17 @@ def selective_scan_ref(
     if delta_softplus:
         delta = F.softplus(delta)
 
-    dA = torch.exp(delta.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(-2))  # (B, D, L, N)
-    dB = delta.unsqueeze(-1) * B.permute(0, 2, 1).unsqueeze(1)          # (B, D, L, N)
-    C_t = C.permute(0, 2, 1).unsqueeze(1)                               # (B, 1, L, N)
-    u_t = u.unsqueeze(-1)                                               # (B, D, L, 1)
-
+    # Memory-efficient scan: accumulate the state h (B, D, N) step by step
+    # instead of materialising the full (B, D, L, N) time-varying matrices
+    # (which blows up memory for long sequences / big batches).
     h = torch.zeros(B_, D, N, device=u.device, dtype=u.dtype)
     ys: list[torch.Tensor] = []
-    for t in range(L):  # sequential scan (reference only)
-        h = dA[:, :, t] * h + dB[:, :, t] * u_t[:, :, t]
-        ys.append((h * C_t[:, :, t]).sum(-1))
+    for t in range(L):
+        delta_t = delta[:, :, t].unsqueeze(-1)        # (B, D, 1)
+        dA_t = torch.exp(delta_t * A)                 # (B, D, N)
+        dB_t = delta_t * B[:, :, t].unsqueeze(1)      # (B, D, N)  (B broadcast over D)
+        h = dA_t * h + dB_t * u[:, :, t].unsqueeze(-1)  # (B, D, N)
+        ys.append((h * C[:, :, t].unsqueeze(1)).sum(-1))  # (B, D)
     y = torch.stack(ys, dim=-1)  # (B, D, L)
     if D_skip is not None:
         y = y + D_skip.view(1, D, 1) * u

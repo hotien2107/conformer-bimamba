@@ -121,20 +121,75 @@ for orig_split, (data_split, scp_name) in split_map.items():
     scp_path.write_text("".join(lines))
     print(f"  {orig_split:6s} → {scp_name:12s} ({len(lines)} files)")'''))
 
-# ---- 5. install libs (+mamba-ssm) ----
-cells.append(code('''# ============================================================================
-# 5. CÀI ĐẶT THƯ VIỆN
-# ============================================================================
-print(f"\\U0001F4E6 Cài đặt thư viện...")
-!pip install -q yamlargparse librosa soundfile einops torchinfo rotary-embedding-torch tensorboard pesq pystoi
+# ---- 5. install libs (+mamba-ssm, robust) ----
+cells.append(md("""### 5. Cài thư viện (tự động chọn bản tương thích)
 
-# Kernel Mamba (chỉ Linux + CUDA). Giữ kernel Mamba-1 (cần cho F0 injection).
-import os
+Có thể mất **10–20 phút nếu phải biên dịch kernel Mamba**. Cell này:
+1. cài các gói chung;
+2. thử cài **phiên bản mới nhất** của `causal-conv1d` / `mamba-ssm` (hay có
+   **wheel** sẵn cho torch trên Colab) thay vì ép build bản cũ;
+3. nếu vẫn lỗi build → **hạ torch về 2.4.1** rồi build lại cặp `1.4.0`/`2.0.1`;
+4. nếu vẫn thất bại → notebook chạy bằng *reference scan* (chậm, chỉ để test).
+> Nếu lần đầu lỗi, cứ **chạy lại cell này** — bước tiếp theo sẽ dùng bản đã chọn."""))
+
+cells.append(code('''# ============================================================================
+# 5. CÀI ĐẶT THƯ VIỆN  (robust)
+# ============================================================================
+!pip install -q ninja yamlargparse librosa soundfile einops torchinfo rotary-embedding-torch tensorboard pesq pystoi
+
+import os, subprocess, sys, torch
 os.environ["MAMBA_KEEP_CUDA_BUILD"] = "TRUE"
-print("Cài kernel Mamba (biên dịch ~10-20 phút)...")
-!pip install -q causal-conv1d==1.4.0
-!pip install -q "mamba-ssm==2.0.1" --no-build-isolation
-print("Xong. Nếu bước này LỖI, notebook vẫn chạy bằng reference scan (chậm).")'''))
+os.environ["TORCH_CUDA_ARCH_LIST"] = "7.5;8.0;8.6;9.0"   # T4/A100/3090/L4 (đủ kiến trúc)
+os.environ["MAX_JOBS"] = "4"                              # tránh OOM khi biên dịch
+
+print("python", sys.version.split()[0], "| torch", torch.__version__,
+      "| CUDA", torch.version.cuda,
+      "|", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU only")
+if sys.version_info[:2] >= (3, 12):
+    print("\u26a0\ufe0f Python >= 3.12: mamba-ssm/causal-conv1d RẤT KHÓ build. "
+          "Nên dùng runtime Python 3.10/3.11 (Runtime > Change runtime type).")
+
+def sh(cmd):
+    print(">", cmd)
+    r = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+def try_import():
+    try:
+        from mamba_ssm import Mamba
+        return True
+    except Exception:
+        return False
+
+def install(pkgs, tail_n=1400):
+    rc, out = sh(f"pip install --no-build-isolation -q {pkgs}")
+    if rc != 0:
+        print("  FAIL ->", out[-tail_n:])
+    return rc
+
+ok = False
+# --- Bước 1: bản MỚI NHẤT (thường có wheel sẵn, không cần build) ---
+for pkg in ["causal-conv1d", "mamba-ssm"]:
+    if install(pkg):
+        if try_import():
+            ok = True
+            break
+print("Bước 1 (bản mới nhất):", "OK" if ok else "chưa dùng được")
+
+# --- Bước 2: nếu chưa được, hạ torch rồi build cặp đã kiểm chứng ---
+if not ok:
+    print("\U0001F4A1 Hạ torch 2.4.1 (cặp tương thích causal-conv1d 1.4.0) rồi build lại...")
+    sh("pip install -q torch==2.4.1 torchaudio==2.4.1")
+    if install("causal-conv1d==1.4.0") == 0:
+        ok = install("mamba-ssm==2.0.1") == 0
+        if ok:
+            print("Kernel Mamba OK (sau khi hạ torch).")
+
+print("\U0001F680 Kernel Mamba sẵn sàng?", ok)
+if not ok:
+    print("\u26a0\ufe0f KHÔNG có kernel Mamba -> model sẽ dùng REFERENCE SCAN (thuần PyTorch). "
+          "Bản này CHẬM và trên GPU có thể OOM; CHỈ hợp test. Muốn train thật: "
+          "cài mamba-ssm (thường phải dùng runtime Python 3.10/3.11), rồi chạy lại cell này.")'''))
 
 # ---- 6. config ----
 cells.append(code('''# ============================================================================
@@ -160,8 +215,8 @@ config = {
     'encoder_embedding_dim': 256,
 
     # Dual-path: FFN → Bi-Mamba → DepthwiseConv → FFN (mọi tham số mô hình ở đây)
-    'num_intra': 8,                     # số khối hybrid đường trong-đoạn
-    'num_inter': 8,                     # số khối hybrid đường liên-đoạn
+    'num_intra': 4,                     # số khối hybrid đường trong-đoạn (≈16.4M tham số)
+    'num_inter': 4,                     # số khối hybrid đường liên-đoạn
     'chunk_size': 250,
     'd_ffn': 1024,
     'conv_kernel': 31,
@@ -193,9 +248,9 @@ config = {
 
     # === DataLoader ===
     'num_workers': 4,
-    'batch_size': 4,
+    'batch_size': 2,
     'accu_grad': 2,
-    'effec_batch_size': 16,
+    'effec_batch_size': 8,
 }
 
 config_path = WORK_DIR / "config/train/vn_speechmix_hybrid_8s_8khz.yaml"
