@@ -19,11 +19,13 @@ md = nbf.v4.new_markdown_cell
 code = nbf.v4.new_code_cell
 cells = []
 
-cells.append(md("""# 🎙️ Huấn luyện **Hybrid Conformer-BiMamba** (8 s, 8 kHz) — giống notebook MossFormer2
-Phiên bản tương tự [`training_mossformer2_vimd_8s_8khz.ipynb`](training_mossformer2_vimd_8s_8khz.ipynb):
-cùng repo trên GitHub, cùng dataset `VN_SpeechMix_8s_8khz` (đã trộn sẵn
-`train|valid|test/mix|s1|s2`), cùng đường dẫn Google Drive, nhưng mô hình là
-**HybridBiMamba_SS_8K** (thay MHSA bằng Bi-Mamba trong khối Conformer).
+cells.append(md("""# 🎙️ Huấn luyện **Hybrid Conformer-BiMamba** (8 s, 8 kHz)
+Đây là notebook cho **một mô hình khác (Conformer-BiMamba)**, chỉ dùng lại **cùng
+pipeline & cùng đường dẫn Drive** với notebook mẫu
+[`training_mossformer2_vimd_8s_8khz.ipynb`](training_mossformer2_vimd_8s_8khz.ipynb)
+(dataset `VN_SpeechMix_8s_8khz`, thư mục checkpoint trên Drive).
+**Model KHÔNG liên quan đến MOSSFormer** — kiến trúc là `FFN → Bi-Mamba →
+DepthwiseConv → FFN` (thay MHSA), không có attention/FSMN của MOSSFormer.
 
 > **Chú ý:** lần đầu mamba-ssm sẽ **biên dịch ~10–20 phút** trên GPU Colab; nếu
 > cài lỗi, notebook vẫn chạy được bằng *reference scan* (chậm, chỉ để test).
@@ -56,7 +58,7 @@ print(f"Đang tải code từ {REPO_URL}...")
 
 # ---- 2. drive mount + paths ----
 cells.append(code('''# ============================================================================
-# 2. CẤU HÌNH ĐƯỜNG DẪN  (giữ nguyên như notebook MossFormer2)
+# 2. CẤU HÌNH ĐƯỜNG DẪN  (giữ nguyên như notebook mẫu MossFormer2)
 # ============================================================================
 from google.colab import drive
 drive.mount('/content/drive')
@@ -68,7 +70,8 @@ WORK_DIR = Path("/content/conformer-bimamba/train/speech_separation")
 DATA_ROOT = Path("/content/datasets/VN_SpeechMix_8s_8khz")
 ZIP_PATH = Path("/content/drive/MyDrive/VN-SpeechMix_Datasets/dataset_8s_8khz.zip")
 
-# Checkpoint lưu vào Drive (CÙNG đường dẫn với notebook mẫu)
+# Checkpoint lưu vào Drive (CÙNG đường dẫn với notebook mẫu; đây chỉ là TÊN
+# thư mục lưu, KHÔNG liên quan đến kiến trúc MOSSFormer)
 CKPT_DIR = Path("/content/drive/MyDrive/checkpoint-mossformer-lite-8s-8khz")
 
 DATA_DIR = WORK_DIR / "data"
@@ -148,17 +151,15 @@ config = {
     'sampling_rate': 8000,
     'max_length': 8,
 
-    # === Model Architecture ===
-    'network': 'HybridBiMamba_SS_8K',   # thay MossFormer2_SS_8K
+    # === Model Architecture (Hybrid Conformer-BiMamba — KHÔNG dùng MossFormer) ===
+    'network': 'HybridBiMamba_SS_8K',
     'num_spks': 2,
 
     # Encoder
     'encoder_kernel_size': 16,
     'encoder_embedding_dim': 256,
-    'mossformer_sequence_dim': 256,     # compat (== encoder dim)
 
-    # Dual-path: FFN → Bi-Mamba → DepthwiseConv → FFN
-    'num_mossformer_layer': 16,         # compat (không dùng bởi hybrid)
+    # Dual-path: FFN → Bi-Mamba → DepthwiseConv → FFN (mọi tham số mô hình ở đây)
     'num_intra': 8,                     # số khối hybrid đường trong-đoạn
     'num_inter': 8,                     # số khối hybrid đường liên-đoạn
     'chunk_size': 250,
