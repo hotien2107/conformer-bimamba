@@ -1,0 +1,63 @@
+# ===========================================================================
+# Proposed model: Hybrid Conformer-BiMamba WITH F0 (tonal) conditioning
+# Block: FFN -> BiMamba -> DepthwiseConv -> FFN   (MHSA removed)
+# F0 gate: adaptive scaling of the Mamba B, C input projections
+# ===========================================================================
+seed: 42
+
+data:
+  sample_rate: 32000
+  train_dur_sec: 4.0          # ~4 s utterances at 32 kHz -> 128k samples
+  val_dur_sec: 5.0
+  snr_range: [0.0, 5.0]       # WHAM-style mixing SNR (dB)
+  f0_mix_mode: max
+  f0_root: null               # F0 cache dir (used only when building manifests from roots)            # train-time proxy: dominant pitch of the 2 sources
+  num_workers: 8
+  train_manifest: manifests/vivos_train.jsonl      # -> build via data/download.py
+  val_mixtures: mixtures/val                       # -> build via preprocess/make_mixtures.py
+  test_mixtures: mixtures/test
+
+model:
+  encoder_dim: 256
+  encoder_kernel: 16          # 1.0 ms @ 16k / 0.5 ms @ 32k
+  encoder_stride: 8
+  chunk_size: 250             # ~62.5 ms of encoded frames
+  hop: 125
+  block_type: hybrid          # hybrid | conformer
+  num_intra: 4
+  num_inter: 4
+  d_ffn: 1024                 # FFN expansion 4x
+  conv_kernel: 31             # depthwise conv ~ local (<30 ms) features
+  nhead: 8
+  dropout: 0.1
+  use_f0: true
+  f0_dim: 64
+  d_state: 64
+  d_conv: 4
+  expand: 2
+  combine: sum                # Bi-Mamba output combination
+  use_mamba2: false           # fused Mamba-2 requires f0_dim == 0
+  checkpointing: false        # enable if VRAM pressure (see risk R3)
+
+train:
+  epochs: 120
+  batch_size: 4               # 4 x ~4 s mixtures on 24 GB with AMP
+  grad_accum: 2               # effective batch 8
+  lr: 0.0015                  # Sepformer-style peak LR
+  mamba_lr_scale: 0.5         # risk R1: lower LR for SSM params
+  weight_decay: 0.00001
+  warmup_steps: 5000
+  max_steps: 200000
+  grad_clip: 5.0
+  amp: true
+  eval_every_epochs: 2
+  save_every_epochs: 5
+  early_stop_patience: 10
+  audio_log_every_epochs: 10
+
+logging:
+  project: conformer-bimamba
+  run_name: bimamba-f0
+  use_wandb: true
+  use_tensorboard: true
+  log_dir: runs

@@ -1,0 +1,42 @@
+# ============================================================================
+# Hybrid Conformer-BiMamba for Vietnamese Speech Separation — requirements
+#
+# Hardware target: 1x NVIDIA GPU with 24 GB VRAM (RTX 3090 / A10G), CUDA 11.8+
+# Python 3.9+ recommended.
+#
+# NOTE on mamba-ssm: it requires a Linux host with CUDA + a working C++/CUDA
+# toolchain and CANNOT be installed on macOS / Windows. The code in this repo
+# imports it lazily: when it is missing (e.g. CPU-only dev boxes), a pure
+# PyTorch reference scan is used instead (slow, for development/edge inference
+# only). See README "Dependencies".
+# ============================================================================
+
+# --- Core ---
+torch>=2.1.0
+torchaudio>=2.1.0
+numpy>=1.24
+einops>=0.7
+
+# --- Mamba (Linux + CUDA only; install AFTER confirming the toolchain) ---
+# On A100 / RTX 3090 (sm_80/sm_86) any of these works:
+mamba-ssm>=2.0.1
+causal-conv1d>=1.4.0
+
+# --- Audio / F0 ---
+librosa>=0.10
+soundfile>=0.12
+pyworld>=0.3.4            # F0 (pitch) extraction, offline pre-processing
+
+# --- Metrics ---
+pesq>=0.0.4               # PESQ (needs 16 kHz mono wav)
+pystoi>=0.4               # STOI
+
+# --- Experiment tracking ---
+wandb>=0.16
+tensorboard>=2.14
+
+# --- Data / IO ---
+pyyaml>=6.0
+tqdm>=4.66
+datasets>=2.18            # Common Voice (Vietnamese) download
+huggingface_hub>=0.23

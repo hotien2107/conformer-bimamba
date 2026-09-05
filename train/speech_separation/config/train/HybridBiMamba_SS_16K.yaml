@@ -1,0 +1,58 @@
+#!/bin/bash
+# Hybrid Conformer-BiMamba (dual-path) speech separation, 16 kHz.
+#
+#   use_f0: 1  -> mixture-F0 (tone) conditioning for Vietnamese.
+#                REQUIRES a 4th column (mixture F0 .npy, Hz @ 100 fps) in every
+#                .scp line - generate with  data/prepare_vi_mixtures.py
+#   use_f0: 0  -> plain Conformer-BiMamba (ablation), plain 3-column .scp works.
+mode: 'train'
+use_cuda: 1 # 1 for True, 0 for False
+
+sampling_rate: 16000
+network: "HybridBiMamba_SS_16K"  ##network type
+
+## model: encoder / dual-path hybrid blocks
+num_spks: 2
+encoder_kernel_size: 16
+encoder_embedding_dim: 256
+mossformer_sequence_dim: 256    # kept for config compatibility (== encoder dim)
+num_mossformer_layer: 8         # kept for config compatibility (num_intra+num_inter)
+chunk_size: 250                 # dual-path chunk (frames); hop = chunk/2
+num_intra: 4
+num_inter: 4
+d_ffn: 1024
+conv_kernel: 31
+nhead: 8
+dropout: 0.1
+d_state: 64
+d_conv: 4
+expand: 2
+combine: 'sum'
+use_mamba2: 0                   # fused Mamba-2 (only valid when use_f0: 0)
+use_f0: 1                       # 1 = enable Vietnamese F0 (tone) conditioning
+f0_dim: 64
+checkpointing: 0                # gradient checkpointing for the dual-path stack
+
+# Train
+load_type: 'one_input_multi_outputs'
+tr_list: 'data/tr_vi_2mix_16k.scp'
+cv_list: 'data/cv_vi_2mix_16k.scp'
+
+init_learning_rate: 0.00015 #learning rate for a new training
+finetune_learning_rate: 0.00005 #learning rate for a finetune training
+
+loss_threshold: -9999.0 #to prevent very low loss
+max_epoch: 120
+
+weight_decay: 0.00001
+clip_grad_norm: 10.
+
+# Log
+seed: 777
+
+# dataset
+num_workers: 4
+batch_size: 1
+accu_grad: 1  # accumulate multiple batch sizes for one back-propagation updating
+effec_batch_size: 4   # per GPU, only used if accu_grad is set to 1, must be multiple times of batch size
+max_length: 2         # truncate the utterances in dataloader, in seconds

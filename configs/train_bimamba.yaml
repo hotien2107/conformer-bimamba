@@ -1,0 +1,64 @@
+# ===========================================================================
+# Ablation 2: Hybrid Conformer-BiMamba WITHOUT F0 conditioning
+# Isolates the value of tonal conditioning vs the Mamba swap alone.
+# Uses the fused Mamba-2 cores (use_mamba2: true) for speed, since no
+# B/C injection is needed in this ablation.
+# ===========================================================================
+seed: 42
+
+data:
+  sample_rate: 32000
+  train_dur_sec: 4.0
+  val_dur_sec: 5.0
+  snr_range: [0.0, 5.0]
+  f0_mix_mode: max
+  f0_root: null               # F0 cache dir (used only when building manifests from roots)
+  num_workers: 8
+  train_manifest: manifests/vivos_train.jsonl
+  val_mixtures: mixtures/val
+  test_mixtures: mixtures/test
+
+model:
+  encoder_dim: 256
+  encoder_kernel: 16
+  encoder_stride: 8
+  chunk_size: 250
+  hop: 125
+  block_type: hybrid
+  num_intra: 4
+  num_inter: 4
+  d_ffn: 1024
+  conv_kernel: 31
+  nhead: 8
+  dropout: 0.1
+  use_f0: false
+  f0_dim: 0
+  d_state: 128                 # Mamba-2 default state width
+  d_conv: 4
+  expand: 2
+  combine: sum
+  use_mamba2: true
+  checkpointing: false
+
+train:
+  epochs: 120
+  batch_size: 4
+  grad_accum: 2
+  lr: 0.0015
+  mamba_lr_scale: 0.5
+  weight_decay: 0.00001
+  warmup_steps: 5000
+  max_steps: 200000
+  grad_clip: 5.0
+  amp: true
+  eval_every_epochs: 2
+  save_every_epochs: 5
+  early_stop_patience: 10
+  audio_log_every_epochs: 10
+
+logging:
+  project: conformer-bimamba
+  run_name: bimamba-no-f0
+  use_wandb: true
+  use_tensorboard: true
+  log_dir: runs

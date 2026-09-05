@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Data / outputs (generated)
+data/
+mixtures/
+runs/
+separated/
+smoke_data/
+
+# Tooling
+.DS_Store
+.wandb/
+wandb/

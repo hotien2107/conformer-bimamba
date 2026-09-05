@@ -1,0 +1,36 @@
+#!/bin/bash
+# Hybrid Conformer-BiMamba inference, 16 kHz.
+mode: 'inference'
+use_cuda: 1 # 1 for True, 0 for False
+num_gpu: 1
+sampling_rate: 16000
+network: "HybridBiMamba_SS_16K"  ##network type
+checkpoint_dir: "checkpoints/HybridBiMamba_SS_16K"
+
+input_path: "data/tt_vi_2mix_16k.scp"  # an input dir or input scp file
+output_dir: "outputs/HybridBiMamba_SS_16K" ## output dir to store processed audio
+
+# decode parameters
+one_time_decode_length: 60 #maximum segment length for one-pass decoding (seconds)
+decode_window: 1 #one-pass decoding length
+
+num_spks: 2
+encoder_kernel_size: 16
+encoder_embedding_dim: 256
+mossformer_sequence_dim: 256
+num_mossformer_layer: 8
+chunk_size: 250
+num_intra: 4
+num_inter: 4
+d_ffn: 1024
+conv_kernel: 31
+nhead: 8
+dropout: 0.1
+d_state: 64
+d_conv: 4
+expand: 2
+combine: 'sum'
+use_mamba2: 0
+use_f0: 1        # F0 is extracted on the fly (PyWorld) from the input mixture
+f0_dim: 64
+checkpointing: 0

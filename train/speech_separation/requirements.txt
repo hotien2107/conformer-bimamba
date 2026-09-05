@@ -1,0 +1,16 @@
+# ClearerVoice-Studio-style speech separation training (this folder)
+# = torch/torchaudio are expected to be installed already (>= 2.1)
+yamlargparse>=1.15
+librosa>=0.10
+soundfile>=0.12
+pyworld>=0.3.4
+pesq>=0.0.4
+pystoi>=0.4
+einops>=0.7
+tensorboard>=2.14
+rotary-embedding-torch>=0.3      # MOSSFormer2 block
+torchinfo>=1.8                   # MOSSFormer2 block
+
+# --- GPU training (Linux + CUDA); keep the Mamba-1 kernel for F0 injection ---
+# MAMBA_KEEP_CUDA_BUILD=TRUE pip install causal-conv1d==1.4.0
+# MAMBA_KEEP_CUDA_BUILD=TRUE pip install mamba-ssm==2.0.1 --no-build-isolation
